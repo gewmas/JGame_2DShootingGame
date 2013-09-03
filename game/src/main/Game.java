@@ -7,13 +7,14 @@ public class Game extends StdGame implements Commons{
 
 	private static final long serialVersionUID = 1L;
 	
+	private Boss boss = null;
+	private boolean superMode = false;
+
 	public static void main(String[] args) {new Game(new JGPoint(Commons.WIDTH,Commons.HEIGHT));}
 
 	public Game(){initEngineApplet(); }
 	public Game(JGPoint size){initEngine(size.x,size.y); }
 
-	private Boss boss = null;
-	
 	@Override
 	public void initCanvas() {setCanvasSettings(CANVAS_WIDTH, CANVAS_HEIGHT, 8, 8, JGColor.black,new JGColor(0,0,0), null);}
 
@@ -49,6 +50,12 @@ public class Game extends StdGame implements Commons{
 //		dbgShowMessagesInPf(true);
 	}
 	
+	
+	/**
+	 * Title: displays title screen.
+	 * Transition to {StartLevel,StartGame}
+	 */
+	
 	@Override
 	public void startTitle() {
 		removeObjects(null,0);
@@ -64,6 +71,8 @@ public class Game extends StdGame implements Commons{
 
 		drawString("Press N for the next level.",pfWidth()/2,180,0);
 		drawString("Press D to lose a life.",pfWidth()/2,200,0);
+		drawString("Press P to pause the game.",pfWidth()/2,220,0);
+		drawString("Press S to become SUPERship.",pfWidth()/2,240,0);
 	}
 
 	public void doFrameTitle() {
@@ -83,7 +92,6 @@ public class Game extends StdGame implements Commons{
 		}
 	}
 
-	/** The StartGame state is just for displaying a start message. */
 	@Override
 	public void paintFrameStartGame() {
 		if(stage == BASIC_LEVEL){
@@ -96,7 +104,13 @@ public class Game extends StdGame implements Commons{
 		
 	}
 
-	/** Called once when game goes into the InGame state. */
+	/**
+	 * 	InGame: game is playing.
+	 *  Transition to LifeLost when lifeLost() is called from within the game. 
+	 *  Transition to LevelDone when levelDone() is called from within the game. 
+	 *  Transition to GameOver when gameOver() is called.
+	 */
+	
 	@Override
 	public void startInGame() {}
 	
@@ -115,7 +129,7 @@ public class Game extends StdGame implements Commons{
 			setPFWrap(true,true, 0, 0);
 			fillBG("");
 			
-			for (int i=0; i<15+level/2; i++) {
+			for (int i=0; i<15*GAME_DIFFICULTY+level/2; i++) {
 				new Enemy(random(-pfWidth(),pfWidth()),random(0,pfHeight()-CLEAR_ZONE),random(-1,1,2), (int)(1.0+level/2.0));
 			}
 			
@@ -123,7 +137,7 @@ public class Game extends StdGame implements Commons{
 				new Bonus(random(-pfWidth(),pfWidth()), random(0,pfHeight()-CLEAR_ZONE), 3*random(-1,1,2), 3*random(-1,1,2));
 			}
 			
-			for (int i=0; i<20; i++){
+			for (int i=0; i<20*GAME_DIFFICULTY; i++){
 				new JGObject("explosion", true, random(-pfWidth(),pfWidth()), random(0,pfHeight()-CLEAR_ZONE),
 						BLOCK_CID, "explosion");
 			}
@@ -147,7 +161,7 @@ public class Game extends StdGame implements Commons{
 				}
 				
 				
-				if (random(0,5) < 1 && y < pfTilesY()-CLEAR_ZONE) 
+				if (random(0,5/GAME_DIFFICULTY) < 1 && y < pfTilesY()-CLEAR_ZONE) 
 					new Enemy(tileWidth()*(tunnelpos+tunnelWidth*random(0,10)/10),tileHeight()*y-CLEAR_ZONE, 0, 0);
 				if (random(0,100) < 1) 
 					new Bonus(tileWidth()*(tunnelpos+tunnelWidth*random(0,10)/10),tileHeight()*y-CLEAR_ZONE, 0, 0);	
@@ -187,11 +201,13 @@ public class Game extends StdGame implements Commons{
 		checkCollision(ENEMY_CID, SPACESHIP_CID);
 		checkCollision(BOSS_CID, SPACESHIP_CID);
 		
+		
 		checkCollision(BULLET_CID, ENEMY_CID);
 		checkCollision(BULLET_CID, BOSS_CID);
 		checkCollision(BLOCK_CID, BULLET_CID);
 		
 		checkBGCollision(7,SPACESHIP_CID);
+		checkBGCollision(7,BLOCK_CID);
 		
 		// Scrolling view
 		setViewOffset((int)getObject("spaceship").x,(int)getObject("spaceship").y-150,true);
@@ -203,8 +219,23 @@ public class Game extends StdGame implements Commons{
 			}else{
 				gameOver();
 			}
+			
+			clearKey('N');
 		}
-		if(getKey('D')) {lifeLost();}
+		if(getKey('D')){
+			lifeLost();
+			
+			clearKey('D');
+		}
+		if(getKey('S')){
+			if(!superMode)
+				superMode = true;
+			else 
+				superMode = false;
+			
+			clearKey('S');
+		}
+		
 		
 		// Win Condition
 		if(	
@@ -236,10 +267,6 @@ public class Game extends StdGame implements Commons{
 		}
 	}
 	
-
-	@Override
-	public void startGameOver() { removeObjects(null,0); }
-	
 	@Override
 	public void incrementLevel() {
 		score += 50;
@@ -250,13 +277,45 @@ public class Game extends StdGame implements Commons{
 			stage++;
 		}
 	}
-	JGFont scoring_font = new JGFont("Arial",0,8);
 
-	public class Spaceship extends JGObject {
+	@Override
+	public void startGameOver() { 
+		removeObjects(null,0); 
+	}
+
+	/**
+	 * Game Objects below extends MovingObject
+	 * Spaceship, Bullet, Enemy, Boss, Bonus
+	 */
+	
+	public class MovingObject extends JGObject{
+		private double timer=0;
+		
+		public MovingObject(String name, boolean unique_id, double x, double y,
+				int collisionid, String gfxname, double xspeed, double yspeed) {
+			super(name, unique_id, x, y, collisionid, gfxname, xspeed, yspeed);
+		}
+		
+		public void move(){
+			timer += gamespeed*2;
+			
+			x += Math.sin(0.1*timer)*xdir;
+			y += Math.cos(0.1*timer)*ydir;
+			
+			if (y>pfHeight()) y = -8;
+		}
+		
+		public void hit_bg(int tilecid) { 
+			remove(); 
+		}
+		
+	}
+
+	public class Spaceship extends MovingObject {
 		int powerLevel = 1;
 		
 		public Spaceship(double x,double y,double speed) {
-			super("spaceship",false,x,y,SPACESHIP_CID,"spaceship",0,0,speed,speed,-1);
+			super("spaceship",false,x,y,SPACESHIP_CID,"spaceship",speed,speed);
 		}
 		@Override
 		public void move() {
@@ -303,7 +362,9 @@ public class Game extends StdGame implements Commons{
 		}
 		@Override
 		public void hit(JGObject obj) {
-			if(obj.colid == ENEMY_CID || obj.colid == BOSS_CID || obj.colid == BLOCK_CID) lifeLost();
+			if(obj.colid == ENEMY_CID || obj.colid == BOSS_CID || obj.colid == BLOCK_CID){
+				if(!superMode) lifeLost();
+			}
 			else if(obj.colid == BONUS_CID){
 				if(powerLevel<5) powerLevel++;
 			}
@@ -311,7 +372,7 @@ public class Game extends StdGame implements Commons{
 		
 		@Override
 		public void hit_bg(int tilecid) {
-			lifeLost();
+			if(!superMode) lifeLost();
 		}
 		
 		public int getPowerLevel() {
@@ -319,12 +380,12 @@ public class Game extends StdGame implements Commons{
 		}
 	}
 	
-	public class Bullet extends JGObject{
+	public class Bullet extends MovingObject{
 		double startX = 0;
 		double startY = 0;
 		
 		public Bullet(double x, double y, int xdir, int ydir){
-			super("bullet",true,x,y,BULLET_CID,"bullet", xdir, ydir, -2);
+			super("bullet",true,x,y,BULLET_CID,"bullet", xdir, ydir);
 			startX = x;
 			startY = y;
 		}
@@ -340,34 +401,22 @@ public class Game extends StdGame implements Commons{
 				remove();
 		}
 		
-		@Override
-		public void hit_bg(int tilecid) { remove(); }
-		
 	}
 	
-	public class Enemy extends JGObject {
+	public class Enemy extends MovingObject {
 		private int life;
-		private double timer=0;
-		
+
 		public Enemy(double x, double y, int xdir, int ydir) {
-			super("enemy",true,x,y, ENEMY_CID, "enemy", xdir, ydir, -2 );
+			super("enemy",true,x,y, ENEMY_CID, "enemy", xdir, ydir);
 			life = ENEMY_LIFE;
-		}
-		@Override
-		public void move() {
-//			dbgPrint("life:" + life);
-			
-			timer += gamespeed*2;
-			
-			x += Math.sin(0.1*timer)*xdir;
-			y += Math.cos(0.1*timer)*ydir;
-			
-			if (y>pfHeight()) y = -8;
 		}
 		
 		public void hurt(){
 			life--;
-			if(life == 0) remove();
+			if(life == 0){
+				remove();
+				score += 20;
+			}
 		}
 		
 		@Override
@@ -375,64 +424,60 @@ public class Game extends StdGame implements Commons{
 			if(obj.colid == BULLET_CID){
 				hurt();
 				obj.remove();
+				score += 1;
 			}
 		}
 		
-		@Override
-		public void hit_bg(int tilecid) { remove(); }
 		
 		
 	}
 	
-	public class Boss extends JGObject{
+	public class Boss extends MovingObject{
 		private int life;
 		
 		public Boss(double x, double y, int xdir, int ydir) {
-			super("boss",true,x,y, BOSS_CID, "spaceshipC", xdir, ydir, -2 );
+			super("boss",true,x,y, BOSS_CID, "spaceshipC", xdir, ydir);
 			life = BOSS_LIFE;
 		}
-		
 		@Override
 		public void move(){
-			if (checkTime(0,(800),((50-level/2)))){
+			super.move();
+			if (checkTime(0,(800),((50/GAME_DIFFICULTY-level/2)))){
 				new Enemy(x, y, random(-5, 5, 1), random(-5, 5, 1));
 			}
 		}
-		
 		public void hurt(){
 			life--;
-			if(life == 0) remove();
+			if(life == 0){
+				remove();
+				score += 100*GAME_DIFFICULTY;
+			}
 		}
-	
 		@Override
 		public void hit(JGObject obj) {
-			if(obj.colid == BULLET_CID) hurt();
+			if(obj.colid == BULLET_CID){
+				hurt();
+				score += 2;
+			}
 		}
-
 		public int getLife() {
 			return life;
 		}
 	}
 	
-	public class Bonus extends JGObject{
+	public class Bonus extends MovingObject{
 		double timer=0;
 		public Bonus(double x, double y, int xdir, int ydir){
-			super("bonus", true, x, y, BONUS_CID, "bonus", xdir,ydir, JGObject.suspend_off_view);
-		}
-		@Override
-		public void move() {
-			timer += gamespeed*3;
-			x += Math.sin(0.1*timer)*xdir;
-			y += Math.cos(0.1*timer)*ydir;
-			if (y>pfHeight()) y = -8;
+			super("bonus", true, x, y, BONUS_CID, "bonus", xdir,ydir);
 		}
 		@Override
 		public void hit(JGObject obj) { 
-			if(obj.colid == SPACESHIP_CID) remove(); 
-		}
-		
-		@Override
-		public void hit_bg(int tilecid) { remove(); }
+			if(obj.colid == SPACESHIP_CID){
+				remove(); 
+				score += 10;
+			}
+		}	
+
 	}
 	
 }

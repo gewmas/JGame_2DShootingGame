@@ -9,6 +9,7 @@ public interface Commons {
 	
 	public static final int CLEAR_ZONE = 30;
 	
+	public static final int GAME_DIFFICULTY = 1;
 	public static final int ENEMY_LIFE = 1;
 	public static final int BOSS_LIFE = 10;
 	
